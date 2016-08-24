@@ -1,0 +1,8 @@
+#!/bin/sh
+
+BASEDIR=$(dirname "$0")
+
+YYYYMM=$1
+
+cat - \
+  | python $BASEDIR/../lib/csv_by_month.py $YYYYMM

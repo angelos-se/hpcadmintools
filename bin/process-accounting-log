@@ -1,0 +1,10 @@
+#!/bin/sh
+
+BASEDIR=$(dirname "$0")
+
+cat - \
+  | python $BASEDIR/../trq_acct2csv.py \
+  | tail -n+2 \
+  | sed 's/, /,/g' \
+  | sed 's/,$//g' \
+  | sort -k6 -t","
