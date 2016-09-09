@@ -1,5 +1,7 @@
 #!/bin/bash
 # Nagios script for monitoring Moab 7 sync state with Torque 4
+# When used with Nagios, make sure user:nagios has rights to read reservations (ADMIN3)
+# mschedctl -m config ADMIN3 root,nagios --flags=pers
 SHOWRES=/opt/moab/bin/showres
 QSTAT=/usr/bin/qstat
 GREP=/bin/grep
@@ -19,7 +21,7 @@ MoabStrayJobID=`for i in $MoabRunningJobID; do $ECHO $TorqueRunningJobID | $GREP
 TorqueStrayJobID=`for i in $TorqueRunningJobID; do $ECHO $MoabRunningJobID | $GREP -q -F "$i" || $ECHO $i; done`
 
 $TOUCH $STATEFILE
-[ "$MoavStrayJobID$TorqueStrayJobID" = "" ] && $DATE +%s > $STATEFILE
+[ "$MoabStrayJobID$TorqueStrayJobID" = "" ] && $DATE +%s > $STATEFILE
 DATESYNC=`$CAT $STATEFILE`
 DATENOW=`$DATE +%s`
 LASTSYNC=`$EXPR $DATENOW - $DATESYNC`
