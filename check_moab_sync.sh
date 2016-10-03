@@ -1,41 +1,35 @@
 #!/bin/bash
 # Nagios script for monitoring Moab 7 sync state with Torque 4
-# When used with Nagios, make sure user:nagios has rights to read reservations (ADMIN3)
-# mschedctl -m config ADMIN3 root,nagios --flags=pers
-SHOWRES=/opt/moab/bin/showres
-QSTAT=/usr/bin/qstat
-GREP=/bin/grep
-AWK=/bin/awk
-CUT=/bin/cut
-ECHO=/bin/echo
-DATE=/bin/date
-TOUCH=/bin/touch
-CAT=/bin/cat
-EXPR=/usr/bin/expr
+# When used with Nagios, make sure user:nagios has rights to restart Moab (ADMIN1)
+# mschedctl -m config ADMIN1 root,nagios --flags=pers
+runid=`date +%Y%m%d-%H%M`
+workdir=/tmp/check_moab_sync
+mkdir -p $workdir
+# Please set your path accordingly
+PATH=$PATH
+output="$(showres -n 2>&1 | grep ' Job ' | sed 's/^/#/' | awk '{print $3}' | sort | uniq | xargs qstat | grep ' C ' | tee $workdir/$runid.log)"
 
-STATEFILE=/tmp/check_moab_sync-last_sync_date
-
-MoabRunningJobID=`$SHOWRES | $GREP "Job R" | $AWK '{print $1}'`
-TorqueRunningJobID=`$QSTAT -t | $GREP " R " | $CUT -d. -f1`
-MoabStrayJobID=`for i in $MoabRunningJobID; do $ECHO $TorqueRunningJobID | $GREP -q -F "$i" || $ECHO $i; done`
-TorqueStrayJobID=`for i in $TorqueRunningJobID; do $ECHO $MoabRunningJobID | $GREP -q -F "$i" || $ECHO $i; done`
-
-$TOUCH $STATEFILE
-[ "$MoabStrayJobID$TorqueStrayJobID" = "" ] && $DATE +%s > $STATEFILE
-DATESYNC=`$CAT $STATEFILE`
-DATENOW=`$DATE +%s`
-LASTSYNC=`$EXPR $DATENOW - $DATESYNC`
-if [ $? -eq 2 ]; then
-	$ECHO "Moab/Torque last sync date not availabe."
+if [ `find $workdir -mmin -15 -name \*.log | wc -l` -gt 0 ]; then
+# Make sure we have some freshly generated log files
+	if [ `find $workdir -mmin -1 -size 0 -name \*.log | wc -l` -gt 0 ]; then
+		echo "Moab clean of stale reservation."
+		exit 0
+	elif [ `find $workdir -mmin -10 -size 0 -name \*.log | wc -l` -gt 0 ]; then
+		echo "Moab has stale reservation (last clean <10 minutes). Issue might be temporary."
+		exit 1
+	elif [ `find $workdir -mmin -25 -size 0 -name \*.log | wc -l` -gt 0 ]; then
+		echo "Moab has stale reservation (last clean 10-25 minutes). Recycling Moab soon."
+		exit 1
+	elif [ `find $workdir -mmin -75 -size 0 -name \*.log | wc -l` -gt 0 ]; then
+		echo "Moab has stale reservation (last clean 25-75). Recycling Moab now."
+		# mschedctl -R
+		exit 1
+	else
+		echo "Moab has stale reservation (last clean >52 minutes. Please perform manual recovery."
+		exit 2
+	fi
+else
+# Nagios shoud return unknow state for stale logs
+	echo "Moab condition unknow."
 	exit 3
 fi
-if [ $LASTSYNC -lt 120 ]; then
-	$ECHO "Moab/Torque last sync in $LASTSYNC seconds."
-	exit 0
-fi
-if [ $LASTSYNC -gt 1800 ]; then
-	$ECHO "Moab/Torque out of sync for more than 30 minutes."
-	exit 2
-fi
-$ECHO "Moab/Torque out of sync for more than 2 minutes."
-exit 1
